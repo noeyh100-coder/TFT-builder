@@ -4,6 +4,9 @@ const HIDE_TR=new Set(['Collab']); // 콜라보는 매판 무작위로 바뀌므
 const CH=D.champions.map((c,i)=>Object.assign({},c,{i,cs:c.cost[0],base:c.name.split(' (')[0],traits:c.traits.filter(t=>!HIDE_TR.has(t))}));
 const TR={};D.traits.forEach(t=>TR[t.key]=t);
 const isUnique=t=>t.styles.length===1&&t.styles[0].min===1;
+const STAR_TR=new Set(['KDA']); // 기물 수가 아니라 별 레벨 총합으로 활성화되는 시너지
+const maxStar=ch=>ch.cs<=3?3:2; // 1~3코는 3성, 4·5코(그 이상)는 2성까지
+const clampStar=(ch,s)=>Math.max(1,Math.min(maxStar(ch),s||2));
 const IT=D.items.map((x,i)=>Object.assign({},x,{i}));
 const IK={};IT.forEach(x=>IK[x.key]=x);
 const EMB={};IT.forEach(x=>{if(x.isEmblem){const k=x.key.replace(/Emblem$/,'');if(TR[k])EMB[x.key]=k}});
@@ -20,7 +23,7 @@ function fmt(s){if(!s)return'';return String(s).replace(/<(?!br\s*\/?>)[^>]*>/gi
 function styleOf(t,n){let s=null;for(const st of TR[t].styles){if(n>=st.min)s=st}return s}
 
 function unitTraits(u,first){const ch=CH[u.c],s=new Set(first?ch.traits:[]);u.i.forEach(j=>{const e=EMB[IT[j].key];if(e&&!ch.traits.includes(e))s.add(e)});return s}
-function counts(){const cnt={},seen=new Set();Object.keys(B).sort((a,b)=>a-b).forEach(x=>{const u=B[x],k=CH[u.c].key,first=!seen.has(k);seen.add(k);unitTraits(u,first).forEach(t=>{if(TR[t])cnt[t]=(cnt[t]||0)+1})});return cnt}
+function counts(){const cnt={},seen=new Set();Object.keys(B).sort((a,b)=>a-b).forEach(x=>{const u=B[x],k=CH[u.c].key,first=!seen.has(k);seen.add(k);unitTraits(u,first).forEach(t=>{if(TR[t])cnt[t]=(cnt[t]||0)+(STAR_TR.has(t)?u.s:1)})});return cnt}
 
 function save(){try{localStorage.setItem('tftb19v2',enc())}catch(e){}}
 function snap(){return JSON.stringify(B)}
@@ -35,7 +38,7 @@ function autoCell(ch){const front=/Tank|Fighter/.test(ch.role||'');const rows=fr
 const DR={p:null,on:false,sup:0,timer:0,tg:null,touch:false};
 const sup=()=>Date.now()-DR.sup<400;
 
-function tapChamp(ci){if(sup())return;let x=armed;if(x==null||B[x])x=autoCell(CH[ci]);if(x<0)return toast('보드가 가득 찼어요');commit(()=>{B[x]={c:ci,s:1,i:[]};armed=null});toast(CH[ci].name+' 배치')}
+function tapChamp(ci){if(sup())return;let x=armed;if(x==null||B[x])x=autoCell(CH[ci]);if(x<0)return toast('보드가 가득 찼어요');commit(()=>{B[x]={c:ci,s:2,i:[]};armed=null});toast(CH[ci].name+' 배치')}
 
 function tapCell(x){
   if(sup())return;
@@ -56,7 +59,7 @@ function equip(x,ii){
   toast(CH[u.c].name+' ← '+it.name);
 }
 function unequip(x,k){if(!B[x])return;commit(()=>{B[x].i.splice(k,1)});if(B[x])champInfo(B[x].c,x)}
-function cycleStar(x){if(sup()||!B[x])return;commit(()=>{B[x].s=B[x].s%3+1})}
+function cycleStar(x){if(sup()||!B[x])return;commit(()=>{B[x].s=B[x].s%maxStar(CH[B[x].c])+1})}
 function cancel(){sel=null;armed=null;held=null;render()}
 
 function renderBoard(){
@@ -162,7 +165,7 @@ function clearDrag(){DR.on=false;DR.p=null;DR.tg=null;$('ghost').style.display='
 function endDrag(){
   const v=DR.p.v,tg=DR.tg;clearDrag();if(!DR.touch)DR.sup=Date.now();
   const k=v[0],n=+v.slice(2);
-  if(k==='c'){if(tg&&tg.cell!=null){const x=tg.cell;commit(()=>{B[x]={c:n,s:1,i:[]};armed=null;sel=null});toast(CH[n].name+' 배치')}}
+  if(k==='c'){if(tg&&tg.cell!=null){const x=tg.cell;commit(()=>{B[x]={c:n,s:2,i:[]};armed=null;sel=null});toast(CH[n].name+' 배치')}}
   else if(k==='u'){
     if(!B[n])return;
     if(tg&&tg.cell!=null&&tg.cell!==n){const x=tg.cell;sel=null;commit(()=>{const a=B[n],b=B[x];B[x]=a;if(b)B[n]=b;else delete B[n]})}
@@ -207,7 +210,7 @@ function dec(s){
     const x=A.indexOf(p[0]),st=+p[1],c=d2(p.slice(2,4));
     if(x<0||x>=CELLS||!CH[c]||!(st>=1&&st<=3))return null;
     const it=[];for(let q=4;q+1<p.length;q+=2){const ii=d2(p.slice(q,q+2));if(IT[ii])it.push(ii)}
-    b[x]={c,s:st,i:it.slice(0,MAXI)};
+    b[x]={c,s:clampStar(CH[c],st),i:it.slice(0,MAXI)};
   }
   return b;
 }

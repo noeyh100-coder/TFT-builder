@@ -145,6 +145,8 @@ input.q{flex:none;width:110px;background:var(--bg);border:1px solid var(--bd);bo
 .aisel button{display:flex;align-items:center;gap:4px;background:var(--p2);border:1px solid var(--bd);color:var(--t);border-radius:14px;padding:4px 9px 4px 5px;font-size:12px}
 .aisel img{width:18px;height:18px}
 .aisel img.cimg{border-radius:50%;border:2px solid var(--cc);object-fit:cover;width:20px;height:20px}
+.aisel .aist{color:#ffd84d;cursor:pointer;padding:0 3px;border-radius:6px;background:rgba(255,216,77,.12);font-size:11px;letter-spacing:-1px}
+.aisel .aix{cursor:pointer;padding:0 2px;color:var(--m)}
 .aisel .add{border-style:dashed;color:var(--a);padding:4px 10px}
 .aiun{display:flex;align-items:center;gap:6px;font-size:12px;margin:12px 2px 0}
 .aiun small{color:var(--m)}
@@ -163,6 +165,7 @@ input.q{flex:none;width:110px;background:var(--bg);border:1px solid var(--bd);bo
 .aih span{flex:1;color:#cfd6e2;word-break:keep-all}
 .aih em{flex:none;font-style:normal;font-size:10px;background:var(--a);color:#042;border-radius:6px;padding:1px 6px;font-weight:700}
 .aiu{display:grid;grid-template-columns:repeat(5,1fr);gap:5px 3px}
+.aiu i{display:block;font-style:normal;color:#ffd84d;font-size:9px;line-height:1;height:10px;letter-spacing:-1px}
 .aiu div{text-align:center;font-size:10px;line-height:1.15;word-break:keep-all}
 .aiu img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:2px solid var(--cc);display:block;margin-bottom:2px}
 .aiu .cr img{box-shadow:0 0 0 2px #ffd84d}
