@@ -105,7 +105,7 @@ function score(team,X){
   const cnt=countOf(team),e=traitEval(cnt),N=team.length,o=X.opts;
   let S=e.tier*1.2+e.act*1.0+e.uniq*.5-e.deadU*.7-e.over*.3;
   if(o.has('clean'))S+=-e.dead*5-e.deadU*1.5-e.over*1.4+e.act*.5;
-  if(o.has('many'))S+=e.act*3.2+e.uniq*.8-e.tier*.3;
+  if(o.has('many'))S+=e.act*3.5-e.uniq*.5-e.tier*.3; // 고유 시너지(1인 특성)는 개수에 넣지 않음
   let f=0;for(const i of team)if(isFront(CH[i]))f++;
   const ff=f/N;
   if(X.ratio){S-=Math.abs(ff-X.ratio)*28}
