@@ -8,10 +8,10 @@ const AI_OPTS=[
   ['high','고코스트','4·5코 위주'],
   ['low','저코스트','1~3코 위주']
 ];
-const AI={opts:['clean'],lv:8,star:2,stars:{},traits:[],champs:[],unlock:false,text:'',res:null,pick:0,info:null};
-(function(){try{const o=JSON.parse(localStorage.getItem('tftb19ai')||'null');if(o){['opts','lv','star','stars','traits','champs','unlock','text'].forEach(k=>{if(o[k]!=null)AI[k]=o[k]})}}catch(e){}
-  AI.traits=AI.traits.filter(k=>TR[k]);AI.champs=AI.champs.filter(i=>CH[i]);if(![1,2,3].includes(AI.star))AI.star=2;if(!AI.stars||typeof AI.stars!=='object')AI.stars={}})();
-function aiSave(){try{localStorage.setItem('tftb19ai',JSON.stringify({opts:AI.opts,lv:AI.lv,star:AI.star,stars:AI.stars,traits:AI.traits,champs:AI.champs,unlock:AI.unlock,text:AI.text}))}catch(e){}}
+const AI={opts:['clean'],lv:8,traits:[],champs:[],unlock:false,text:'',res:null,pick:0,info:null};
+(function(){try{const o=JSON.parse(localStorage.getItem('tftb19ai')||'null');if(o){['opts','lv','traits','champs','unlock','text'].forEach(k=>{if(o[k]!=null)AI[k]=o[k]})}}catch(e){}
+  AI.traits=AI.traits.filter(k=>TR[k]);AI.champs=AI.champs.filter(i=>CH[i])})();
+function aiSave(){try{localStorage.setItem('tftb19ai',JSON.stringify({opts:AI.opts,lv:AI.lv,traits:AI.traits,champs:AI.champs,unlock:AI.unlock,text:AI.text}))}catch(e){}}
 
 const isFront=ch=>/Tank|Fighter/.test(ch.role||'');
 const isTank=ch=>/Tank/.test(ch.role||'');
@@ -42,7 +42,7 @@ const ENT=(()=>{const L=[];const seen=new Set();
 
 function aiParse(text){
   const s=' '+(text||'').toLowerCase()+' ';
-  const r={champs:[],carry:[],exC:[],traits:{},exT:[],only:null,min:null,max:null,exCost:[],pref:[],lv:null,ratio:null,bias:0,opts:[],unlock:null,said:[]};
+  const r={champs:[],carry:[],stars:{},exC:[],traits:{},exT:[],only:null,min:null,max:null,exCost:[],pref:[],lv:null,ratio:null,bias:0,opts:[],unlock:null,said:[]};
   const used=new Array(s.length).fill(false);
   for(const e of ENT){
     e.re.lastIndex=0;let m;
@@ -55,7 +55,9 @@ function aiParse(text){
       if(e.type==='c'){
         if(neg){r.exC.push(e.key);continue}
         if(!r.champs.includes(e.key))r.champs.push(e.key);
-        if(/^\s*(?:이|가|을|를|은|는|로|으로|의)?\s*(?:캐리|메인|주력|핵심|딜러|에이스)/.test(after)||/(?:캐리|메인|주력|에이스)\s*(?:는|은|로|으로|가)?\s*$/.test(before))r.carry.push(e.key);
+        const sm=after.match(/^\s*(?:을|를|은|는|이|가|도|만)?\s*([1-3])\s*(?:성|별|스타)/)||before.match(/([1-3])\s*(?:성|별|스타)\s*(?:짜리)?\s*$/);
+        if(sm)r.stars[e.key]=+sm[1];
+        if(/^\s*(?:이|가|을|를|은|는|로|으로|의)?\s*(?:캐리|메인|주력|핵심|딜러|에이스)/.test(after.replace(/^\s*[1-3]\s*(?:성|별|스타)/,''))||/(?:캐리|메인|주력|에이스)\s*(?:는|은|로|으로|가)?\s*$/.test(before))r.carry.push(e.key);
       }else{
         if(neg){r.exT.push(e.key);continue}
         let n=null;const a=after.match(/^\s*(\d{1,2})(?!\s*(?:코|레벨|렙|lv|:|레))/),b=before.match(/(\d{1,2})\s*$/);
@@ -100,8 +102,28 @@ function traitEval(cnt){
   return{act,tier,dead,deadU,over,uniq,det};
 }
 // 별 레벨: 직접 고른 기물은 개별 설정, 나머지는 덱 기본값 (코스트별 상한 적용)
-const starOf=(i,X)=>clampStar(CH[i],(X&&X.stars&&X.stars[i])||(X?X.star:AI.star));
-function countOf(team,X){const cnt={};for(const i of team){const s=starOf(i,X);for(const t of CH[i].traits)cnt[t]=(cnt[t]||0)+(STAR_TR.has(t)?s:1)}return cnt}
+/* 별 레벨: 기본 2성, AI가 상황에 맞게 조정 (1~3코 최대 3성 · 4·5코 최대 2성) */
+function assignStars(team,X){
+  const st={},o=X.opts,fix=X.fix||{},carry=X.carry||[];
+  for(const i of team)st[i]=fix[i]?clampStar(CH[i],fix[i]):2;
+  const can=i=>!fix[i]&&maxStar(CH[i])===3&&st[i]<3;
+  // 낮은 레벨에선 4·5코를 2성으로 맞추기 어려움 → 1성 (캐리·고유 지정 제외)
+  if(X.lv<=6&&!o.has('high'))for(const i of team)if(!fix[i]&&!carry.includes(i)&&CH[i].cs>=4)st[i]=1;
+  // 저코스트 캐리는 3성을 노림
+  for(const i of carry)if(can(i)&&(CH[i].cs<=2||(CH[i].cs===3&&X.lv<=8)))st[i]=3;
+  // 리롤 상황(저코 위주·낮은 레벨): 싼 기물부터 몇 개 3성
+  let budget=o.has('low')?3:X.lv<=6?2:X.lv<=7?1:0;budget-=team.filter(i=>st[i]===3).length;
+  const maxC=o.has('low')?3:2;
+  for(const i of team.filter(can).sort((a,b)=>CH[a].cs-CH[b].cs)){if(budget<=0)break;if(CH[i].cs<=maxC){st[i]=3;budget--}}
+  // 별 합산 시너지(K/DA): 다음 단계까지 조금 모자라면 저코 기물을 3성으로
+  for(const t of STAR_TR){const us=team.filter(i=>CH[i].traits.includes(t));if(!us.length||!TR[t])continue;
+    const sum=us.reduce((a,i)=>a+st[i],0),nx=TR[t].styles.map(x=>x.min).find(m=>m>sum)||0,goal=Math.max((X.want||{})[t]||0,nx);
+    const up=us.filter(can).sort((a,b)=>CH[a].cs-CH[b].cs),need=goal-sum;
+    if(need>0&&need<=up.length&&(need<=2||(X.want||{})[t]>=goal))for(let k=0;k<need;k++)st[up[k]]=3;
+  }
+  return st;
+}
+function countOf(team,X,st){st=st||assignStars(team,X);const cnt={};for(const i of team)for(const t of CH[i].traits)cnt[t]=(cnt[t]||0)+(STAR_TR.has(t)?st[i]:1);return cnt}
 
 function score(team,X){
   const cnt=countOf(team,X),e=traitEval(cnt),N=team.length,o=X.opts;
@@ -142,7 +164,7 @@ function buildCtx(){
   const want={},capNotes=[];
   const costOk=c=>(!p.only||p.only.includes(c))&&(p.min==null||c>=p.min)&&(p.max==null||c<=p.max)&&!p.exCost.includes(c);
   const usable=c=>!exC.has(c.i)&&(req.includes(c.i)||costOk(c.cs))&&((unlock||!c.unlock)&&!(c.unlock&&c.unlock.level>lv)||req.includes(c.i));
-  const tgtFor=(t,n)=>{const T=TR[t],mins=T.styles.map(s=>s.min),bm={};CH.filter(c=>c.traits.includes(t)&&usable(c)).forEach(c=>{const v=STAR_TR.has(t)?starOf(c.i,{star:AI.star,stars:AI.stars}):1;bm[c.base]=Math.max(bm[c.base]||0,v)}),avail=Object.values(bm).reduce((a,b)=>a+b,0);
+  const tgtFor=(t,n)=>{const T=TR[t],mins=T.styles.map(s=>s.min),bm={};CH.filter(c=>c.traits.includes(t)&&usable(c)).forEach(c=>{const v=STAR_TR.has(t)?(p.stars[c.i]?clampStar(c,p.stars[c.i]):maxStar(c)):1;bm[c.base]=Math.max(bm[c.base]||0,v)}),avail=Object.values(bm).reduce((a,b)=>a+b,0);
     if(n){if(n>avail)capNotes.push(`${T.name}은(는) 지금 조건에서 최대 ${avail}까지만 가능해요`);return Math.min(n,avail)}let g=mins[0];for(const m of mins)if(m<=Math.max(2,Math.ceil(lv*.6))&&m<=avail)g=m;return Math.min(g,avail)};
   AI.traits.forEach(t=>{if(!p.exT.includes(t))want[t]=tgtFor(t,0)});
   Object.entries(p.traits).forEach(([t,n])=>{want[t]=Math.max(want[t]&&!n?want[t]:0,tgtFor(t,n))});
@@ -154,7 +176,7 @@ function buildCtx(){
   if(req.length+bases.size<N){notes.push(`조건에 맞는 기물이 ${req.length+bases.size}개뿐이라 ${req.length+bases.size}기로 구성했어요`);N=req.length+bases.size}
   const ratio=p.ratio?p.ratio[0]/(p.ratio[0]+p.ratio[1]):null;
   const pw=lv>=9?.4:lv>=7?.22:.1;
-  return{p,opts,lv,N,req,pool,star:AI.star,stars:Object.fromEntries(req.filter(i=>AI.stars[i]).map(i=>[i,AI.stars[i]])),want,carry:p.carry.filter(i=>req.includes(i)),ratio,bias:p.bias,pref:p.pref,pw,unlock,notes,costOk,exT};
+  return{p,opts,lv,N,req,pool,fix:p.stars,want,carry:p.carry.filter(i=>req.includes(i)),ratio,bias:p.bias,pref:p.pref,pw,unlock,notes,costOk,exT};
 }
 
 function solve(X){
@@ -197,7 +219,7 @@ function solve(X){
 }
 
 /* ───────────── 배치 ───────────── */
-function layout(team,carry,X){
+function layout(team,carry,st){
   const b={};
   const ord=[3,2,4,1,5,0,6];
   const fr=team.filter(i=>isFront(CH[i])).sort((a,c)=>(carry.includes(c)-carry.includes(a))||(isTank(CH[c])-isTank(CH[a]))||CH[c].cs-CH[a].cs);
@@ -205,14 +227,14 @@ function layout(team,carry,X){
   const fCells=[...ord.map(c=>c),...ord.map(c=>COLS+c)];
   const bCells=[...[0,6,1,5,2,4,3].map(c=>3*COLS+c),...[0,6,1,5,2,4,3].map(c=>2*COLS+c)];
   // 앞라인: 캐리 → 탱커 → 나머지 순으로 첫 줄 중앙부터, 뒷라인: 캐리를 맨 뒷줄 구석부터
-  fr.forEach(i=>{const x=fCells.find(x=>!b[x]);if(x!=null)b[x]={c:i,s:starOf(i,X),i:[]}});
-  bk.forEach(i=>{const x=bCells.find(x=>!b[x])??[...Array(CELLS).keys()].find(x=>!b[x]);if(x!=null)b[x]={c:i,s:starOf(i,X),i:[]}});
+  fr.forEach(i=>{const x=fCells.find(x=>!b[x]);if(x!=null)b[x]={c:i,s:st[i]||2,i:[]}});
+  bk.forEach(i=>{const x=bCells.find(x=>!b[x])??[...Array(CELLS).keys()].find(x=>!b[x]);if(x!=null)b[x]={c:i,s:st[i]||2,i:[]}});
   return b;
 }
 function aiApply(k){
   const r=AI.res&&AI.res.list[k];if(!r)return;
   AI.pick=k;sel=null;armed=null;held=null;
-  commit(()=>{B=layout(r.team,AI.res.carry,AI.res.X)});
+  commit(()=>{B=layout(r.team,AI.res.carry,r.stars)});
   if(full){full=false;$('drawer').classList.remove('full')}
   toast(`${r.team.length}기 배치 완료`);
 }
@@ -222,14 +244,15 @@ function aiRun(){
   const ta=$('aiText');if(ta)AI.text=ta.value;aiSave();
   const X=buildCtx();
   if(!X.N){toast('조건에 맞는 기물이 없어요');AI.res={list:[],notes:['조건에 맞는 기물이 없어요. 조건을 조금 풀어 주세요'],chips:aiChips(X),carry:[]};renderBody();return}
-  const list=solve(X).map(o=>Object.assign(o,{why:explain(o.team,X)}));
-  AI.res={list,notes:X.notes,chips:aiChips(X),carry:X.carry,X:{star:X.star,stars:X.stars}};
+  const list=solve(X).map(o=>{const st=assignStars(o.team,X);return Object.assign(o,{stars:st,why:explain(o.team,X,st)})});
+  AI.res={list,notes:X.notes,chips:aiChips(X),carry:X.carry};
   AI.pick=0;renderBody();
   if(list.length)aiApply(0);
 }
 function aiChips(X){
   const c=[];const p=X.p;
-  c.push(`레벨 ${X.lv} · ${X.N}기`);c.push(`기본 ${X.star}성`+(X.star>2?' (4·5코 2성)':''));
+  c.push(`레벨 ${X.lv} · ${X.N}기`);
+  Object.entries(X.fix).forEach(([k,n])=>{const ch=CH[+k];if(ch)c.push(`${ch.name} ${clampStar(ch,n)}성`)});
   [...X.opts].forEach(o=>{const f=AI_OPTS.find(x=>x[0]===o);if(f)c.push(f[1])});
   X.carry.forEach(i=>c.push('캐리 '+CH[i].name));
   X.req.filter(i=>!X.carry.includes(i)).forEach(i=>c.push('고정 '+CH[i].name));
@@ -243,8 +266,8 @@ function aiChips(X){
   c.push(X.unlock?'해금 포함':'해금 제외');
   return c;
 }
-function explain(team,X){
-  const cnt=countOf(team,X),e=traitEval(cnt);
+function explain(team,X,st){
+  const cnt=countOf(team,X,st),e=traitEval(cnt);
   const f=team.filter(i=>isFront(CH[i])).length;
   const avg=team.reduce((a,i)=>a+CH[i].cs,0)/team.length;
   const act=Object.entries(e.det).filter(([t,d])=>d.k>=0&&!isUnique(TR[t])).sort((a,b)=>RANK[b[1].st]-RANK[a[1].st]||b[1].n-a[1].n);
@@ -252,6 +275,9 @@ function explain(team,X){
   const bits=[];
   if(X.carry.length)bits.push(X.carry.map(i=>CH[i].name).join('·')+' 캐리');
   if(top)bits.push(top+' 중심');
+  const s3=team.filter(i=>st[i]===3),s1=team.filter(i=>st[i]===1);
+  if(s3.length)bits.push(s3.map(i=>CH[i].name).join('·')+' 3성');
+  if(s1.length)bits.push(s1.map(i=>CH[i].name).join('·')+' 1성');
   if(e.dead===0&&e.over===0)bits.push('버리는 시너지 0');else if(e.dead===0)bits.push('비활성 시너지 없음');
   return{text:bits.join(', '),act:e.act,dead:e.dead,f,b:team.length-f,avg,det:e.det};
 }
@@ -259,14 +285,12 @@ function explain(team,X){
 /* ───────────── UI ───────────── */
 function aiToggleOpt(o){const s=new Set(AI.opts);if(s.has(o))s.delete(o);else{s.add(o);if(o==='high')s.delete('low');if(o==='low')s.delete('high')}AI.opts=[...s];aiSave();renderBody()}
 function aiSetLv(n){AI.lv=n;aiSave();renderBody()}
-function aiSetStar(n){AI.star=n;aiSave();renderBody()}
-function aiCycStar(i){const m=maxStar(CH[i]),cur=starOf(i,{star:AI.star,stars:AI.stars});AI.stars[i]=cur%m+1;aiSave();renderBody()}
 function aiToggleUnlock(){AI.unlock=!AI.unlock;aiSave();renderBody()}
 function aiTxt(v){AI.text=v;aiSave()}
 function aiDelT(t){AI.traits=AI.traits.filter(x=>x!==t);aiSave();renderBody()}
-function aiDelC(i){AI.champs=AI.champs.filter(x=>x!==i);delete AI.stars[i];aiSave();renderBody()}
+function aiDelC(i){AI.champs=AI.champs.filter(x=>x!==i);aiSave();renderBody()}
 function aiTogT(t){AI.traits=AI.traits.includes(t)?AI.traits.filter(x=>x!==t):AI.traits.concat(t);aiSave();aiPickT();renderBody()}
-function aiTogC(i){if(AI.champs.includes(i)){AI.champs=AI.champs.filter(x=>x!==i);delete AI.stars[i]}else AI.champs=AI.champs.concat(i);aiSave();aiPickC();renderBody()}
+function aiTogC(i){AI.champs=AI.champs.includes(i)?AI.champs.filter(x=>x!==i):AI.champs.concat(i);aiSave();aiPickC();renderBody()}
 function aiPickT(){
   const sc=$('sheet').classList.contains('on')?$('sheet').querySelector('.box').scrollTop:0;
   openSheet(`<div class="ttl">원하는 시너지 선택</div><div class="aitg">${PICK_TR.map(t=>`<button class="${AI.traits.includes(t.key)?'on':''}" onclick="aiTogT('${t.key}')"><img src="${t.img}" alt="">${t.name}<small>${t.styles.map(s=>s.min).join('/')}</small></button>`).join('')}</div>`);
@@ -287,7 +311,7 @@ function aiResult(){
   s+=R.list.map((r,k)=>{const w=r.why;
     const trs=Object.entries(w.det).filter(([t,d])=>TR[t]).sort((a,b)=>(b[1].k>=0)-(a[1].k>=0)||(RANK[b[1].st]||0)-(RANK[a[1].st]||0)||b[1].n-a[1].n);
     return `<div class="aicard ${AI.pick===k?'on':''}" onclick="aiApply(${k})"><div class="aih"><b>${k===0?'최적':'대안 '+k}</b><span>${esc(w.text)}</span>${AI.pick===k?'<em>배치됨</em>':''}</div>
-    <div class="aiu">${r.team.slice().sort((a,b)=>CH[a].cs-CH[b].cs||byName(CH[a],CH[b])).map(i=>`<div class="k${CH[i].cs}${R.carry.includes(i)?' cr':''}"><i>${'★'.repeat(starOf(i,R.X))}</i><img src="${CH[i].img}" alt=""><span>${CH[i].name}</span></div>`).join('')}</div>
+    <div class="aiu">${r.team.slice().sort((a,b)=>CH[a].cs-CH[b].cs||byName(CH[a],CH[b])).map(i=>`<div class="k${CH[i].cs}${R.carry.includes(i)?' cr':''}"><i>${'★'.repeat(r.stars[i]||2)}</i><img src="${CH[i].img}" alt=""><span>${CH[i].name}</span></div>`).join('')}</div>
     <div class="ait">${trs.map(([t,d])=>`<span class="${d.st||'off'}"><img src="${TR[t].img}" alt="">${d.n}</span>`).join('')}</div>
     <div class="aim">활성 시너지 ${w.act} · 비활성 ${w.dead} · 앞:뒤 ${w.f}:${w.b} · 평균 ${w.avg.toFixed(1)}코</div></div>`}).join('');
   return s;
@@ -299,12 +323,10 @@ function aiBody(){
   <div class="aiopt">${AI_OPTS.map(([k,n,d])=>`<button class="${AI.opts.includes(k)?'on':''}" onclick="aiToggleOpt('${k}')"><b>${n}</b><small>${d}</small></button>`).join('')}</div>
   <div class="aisec">레벨 <small>= 기물 수</small></div>
   <div class="seg">${[5,6,7,8,9,10].map(n=>`<button class="${AI.lv===n?'on':''}" onclick="aiSetLv(${n})">${n}</button>`).join('')}</div>
-  <div class="aisec">별 레벨 <small>1~3코 최대 3성 · 4·5코 최대 2성 · K/DA는 별 합산</small></div>
-  <div class="seg">${[1,2,3].map(n=>`<button class="${AI.star===n?'on':''}" onclick="aiSetStar(${n})">${'★'.repeat(n)}</button>`).join('')}</div>
   <div class="aisec">원하는 시너지</div>
   <div class="aisel">${AI.traits.map(t=>`<button onclick="aiDelT('${t}')"><img src="${TR[t].img}" alt="">${TR[t].name} ✕</button>`).join('')}<button class="add" onclick="aiPickT()">+ 시너지</button></div>
   <div class="aisec">원하는 기물</div>
-  <div class="aisel">${AI.champs.map(i=>`<button class="k${CH[i].cs}"><img class="cimg" src="${CH[i].img}" alt="">${CH[i].name}<span class="aist" onclick="aiCycStar(${i})" title="별 레벨 바꾸기">${'★'.repeat(starOf(i,{star:AI.star,stars:AI.stars}))}</span><span class="aix" onclick="aiDelC(${i})">✕</span></button>`).join('')}<button class="add" onclick="aiPickC()">+ 기물</button></div>
+  <div class="aisel">${AI.champs.map(i=>`<button class="k${CH[i].cs}" onclick="aiDelC(${i})"><img class="cimg" src="${CH[i].img}" alt="">${CH[i].name} ✕</button>`).join('')}<button class="add" onclick="aiPickC()">+ 기물</button></div>
   <label class="aiun"><input type="checkbox" ${AI.unlock?'checked':''} onchange="aiToggleUnlock()"> 해금 기물도 사용 <small>(직접 고른 기물은 항상 포함)</small></label>
   <div class="aisec">AI에게 부탁하기</div>
   <textarea id="aiText" class="aita" placeholder="예) 진이 캐리 기물로 있는 4코스트로만 구성된 덱을 만들어줘" oninput="aiTxt(this.value)">${esc(AI.text)}</textarea>
