@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: tft-builder
+    runtime: static
+    buildCommand: ""
+    staticPublishPath: .
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=300
+      - path: /img/*
+        name: Cache-Control
+        value: public, max-age=604800
