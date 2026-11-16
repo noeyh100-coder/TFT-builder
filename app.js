@@ -1,6 +1,7 @@
 const D=window.TFT_DATA;
 const ROWS=4,COLS=7,CELLS=28,MAXI=3,COSTS=[1,2,3,4,5,7];
-const CH=D.champions.map((c,i)=>Object.assign({},c,{i,cs:c.cost[0],base:c.name.split(' (')[0]}));
+const HIDE_TR=new Set(['Collab']); // 콜라보는 매판 무작위로 바뀌므로 표시하지 않음
+const CH=D.champions.map((c,i)=>Object.assign({},c,{i,cs:c.cost[0],base:c.name.split(' (')[0],traits:c.traits.filter(t=>!HIDE_TR.has(t))}));
 const TR={};D.traits.forEach(t=>TR[t.key]=t);
 const isUnique=t=>t.styles.length===1&&t.styles[0].min===1;
 const IT=D.items.map((x,i)=>Object.assign({},x,{i}));
@@ -13,7 +14,7 @@ const $=id=>document.getElementById(id);
 const byName=(a,b)=>a.name.localeCompare(b.name,'ko');
 const byCost=(a,b)=>a.cs-b.cs||byName(a,b);
 
-let B={},hist=[],fut=[],sel=null,armed=null,held=null,tab='c',view='cost',iq='',comp=[],full=false;
+let B={},hist=[],fut=[],sel=null,armed=null,held=null,tab='c',view='cost',full=false;
 
 function fmt(s){if(!s)return'';return String(s).replace(/<(?!br\s*\/?>)[^>]*>/gi,'').replace(/%i:([A-Za-z0-9_]+)%/g,(m,k)=>TR[k]?`<img class="ti" src="${TR[k].img}" alt="">`:(SC[k]?`<span class="sc">${SC[k]}</span>`:''))}
 function styleOf(t,n){let s=null;for(const st of TR[t].styles){if(n>=st.min)s=st}return s}
@@ -54,7 +55,6 @@ function equip(x,ii){
   commit(()=>{B[x].i.push(ii)});
   toast(CH[u.c].name+' ← '+it.name);
 }
-function tapItem(ii){if(sup())return;if(sel!=null){equip(sel,ii);return}held=held===ii?null:ii;if(held!=null)toast('장착할 유닛을 탭하세요');render()}
 function unequip(x,k){if(!B[x])return;commit(()=>{B[x].i.splice(k,1)});if(B[x])champInfo(B[x].c,x)}
 function cycleStar(x){if(sup()||!B[x])return;commit(()=>{B[x].s=B[x].s%3+1})}
 function cancel(){sel=null;armed=null;held=null;render()}
@@ -92,12 +92,12 @@ function toggleFull(){full=!full;$('drawer').classList.toggle('full',full)}
 
 function renderFlt(){
   const f=$('flt'),f2=$('flt2');
+  f.style.display='';
   if(tab==='c'){
     f.innerHTML=`<div class="seg">${[['cost','가격순'],['origin','계열별'],['class','직업별'],['unique','고유 특성']].map(([k,n])=>`<button class="${view===k?'on':''}" onclick="setView('${k}')">${n}</button>`).join('')}</div>`;
     f2.innerHTML='';f2.style.display='none';
   }else{
-    f.innerHTML=`<input class="q" style="width:100%" placeholder="아이템 검색" value="${iq}" oninput="iq=this.value;renderBody()">`;
-    f2.innerHTML='';f2.style.display='none';
+    f.innerHTML='';f.style.display='none';f2.innerHTML='';f2.style.display='none';
   }
 }
 
@@ -117,20 +117,10 @@ function renderBody(){
     const gs=champGroups().filter(g=>g.list.length);
     s=gs.length?gs.map(g=>(g.t?`<div class="gh" onclick="traitInfo('${g.t.key}')"><img src="${g.t.img}" alt="">${g.t.name}<small>${g.t.styles.map(x=>x.min).join(' / ')}</small><span class="i">ⓘ</span></div>`:g.h?`<div class="gh">${g.h}</div>`:'')+`<div class="grid">${g.list.map(c=>champTile(c,onB)).join('')}</div>`).join(''):'<div class="empty">결과가 없어요</div>';
   }else{
-    const cn=comp.reduce((m,k)=>(m[k]=(m[k]||0)+1,m),{});
-    s+=`<div class="sec">조합기 · 재료 2개를 탭하세요</div><div class="comps">${COMPS.map(c=>`<button class="cp ${cn[c.key]?'on':''}" onclick="tapComp('${c.key}')">${cn[c.key]>1?'<b>×2</b>':''}<img src="${c.img}" alt="">${c.name}</button>`).join('')}</div>`;
-    if(comp.length){
-      const r=comp.length===2?IT.find(x=>!x.isHidden&&x.compositions&&x.compositions.length===2&&[...x.compositions].sort().join()===[...comp].sort().join()):null;
-      s+=`<div class="res">${r?`<img src="${r.img}" alt="">`:''}<div class="grow">${comp.map(k=>IK[k].name).join(' + ')}${r?` = <b>${r.name}</b>`:comp.length===2?' = 조합 없음':' + ?'}</div>${r?`<button class="pill on" onclick="tapItem(${r.i})">${sel!=null?'장착':'들기'}</button>`:''}<button class="pill" onclick="comp=[];renderBody()">비우기</button></div>`;
-    }
-    const q=iq.trim();
-    const fit=x=>!x.isHidden&&(!q||x.name.includes(q));
-    const grp=(f,ttl)=>{const l=IT.filter(x=>f(x)&&fit(x)).sort(byName);return l.length?`<div class="sec">${ttl}</div><div class="igrid">${l.map(x=>`<div class="it ${held===x.i?'held':''}" data-drag="i:${x.i}" onclick="tapItem(${x.i})"><img src="${x.img}" alt="" draggable="false">${x.name}</div>`).join('')}</div>`:''};
-    s+=grp(x=>x.isNormal,'일반')+grp(x=>x.isEmblem,'상징')+grp(x=>x.isArtifact,'유물')+grp(x=>x.isRadiant,'찬란')+grp(x=>x.isFromItem,'재료');
+    s=aiBody();
   }
   body.innerHTML=s;body.scrollTop=st;
 }
-function tapComp(k){if(comp.length>=2)comp=[];comp.push(k);renderBody()}
 
 function openSheet(h){$('sheetBody').innerHTML=h;$('sheet').classList.add('on');$('sheet').querySelector('.box').scrollTop=0}
 function closeSheet(){$('sheet').classList.remove('on')}
@@ -161,7 +151,7 @@ function startDrag(x,y){
 }
 function targetAt(x,y){const el=document.elementFromPoint(x,y);if(!el)return null;const c=el.closest('[data-cell]');if(c)return{cell:+c.dataset.cell};if(el.closest('#drawer'))return{trash:true};return null}
 function moveDrag(x,y){
-  const oy=DR.touch?-48:0;const gx=x,gy=y+oy;
+  const gx=x,gy=y;
   const g=$('ghost');g.style.left=gx+'px';g.style.top=gy+'px';
   const tg=targetAt(gx,gy);DR.tg=tg;
   document.querySelectorAll('.cell.drop').forEach(e=>e.classList.remove('drop'));
