@@ -1,7 +1,11 @@
 const D=window.TFT_DATA;
 const ROWS=4,COLS=7,CELLS=28,MAXI=3,COSTS=[1,2,3,4,5,7];
-const HIDE_TR=new Set(['Collab']); // 콜라보는 매판 무작위로 바뀌므로 표시하지 않음
-const CH=D.champions.map((c,i)=>Object.assign({},c,{i,cs:c.cost[0],base:c.name.split(' (')[0],traits:c.traits.filter(t=>!HIDE_TR.has(t))}));
+// 콜라보: 매판 바뀌는 특성 → 원본 데이터의 Collab은 떼어 두고(t0), 콜라보 탭에서 고른 조합에만 붙인다.
+// 소나는 조합과 별개로 항상 콜라보 (콜라보 후보 풀에는 들어가지 않음)
+const COL_FIX=new Set(['Sona']);
+const CH=D.champions.map((c,i)=>{const t0=c.traits.filter(t=>t!=='Collab');return Object.assign({},c,{i,cs:c.cost[0],base:c.name.split(' (')[0],t0,traits:t0.slice(),col0:c.traits.includes('Collab')&&!COL_FIX.has(c.key)})});
+let COL=new Set(); // 현재 적용된 콜라보 조합 (챔피언 key)
+function setCollab(keys){COL=new Set((keys||[]).filter(k=>CH.some(c=>c.key===k)));CH.forEach(c=>{c.traits=c.t0.concat(COL_FIX.has(c.key)||COL.has(c.key)?['Collab']:[])});try{localStorage.setItem('tftb19col',JSON.stringify([...COL]))}catch(e){}}
 const TR={};D.traits.forEach(t=>TR[t.key]=t);
 const isUnique=t=>t.styles.length===1&&t.styles[0].min===1;
 const STAR_TR=new Set(['KDA']); // 기물 수가 아니라 별 레벨 총합으로 활성화되는 시너지
@@ -119,6 +123,8 @@ function renderBody(){
     const onB=new Set(Object.values(B).map(u=>CH[u.c].key));
     const gs=champGroups().filter(g=>g.list.length);
     s=gs.length?gs.map(g=>(g.t?`<div class="gh" onclick="traitInfo('${g.t.key}')"><img src="${g.t.img}" alt="">${g.t.name}<small>${g.t.styles.map(x=>x.min).join(' / ')}</small><span class="i">ⓘ</span></div>`:g.h?`<div class="gh">${g.h}</div>`:'')+`<div class="grid">${g.list.map(c=>champTile(c,onB)).join('')}</div>`).join(''):'<div class="empty">결과가 없어요</div>';
+  }else if(tab==='k'){
+    s=colBody();
   }else{
     s=aiBody();
   }
@@ -199,11 +205,13 @@ document.addEventListener('touchcancel',()=>{clearTimeout(DR.timer);if(DR.on)cle
 
 const e2=n=>A[Math.floor(n/62)]+A[n%62];
 const d2=s=>A.indexOf(s[0])*62+A.indexOf(s[1]);
-function enc(){return 'b-'+Object.keys(B).map(x=>{const u=B[x];return A[+x]+u.s+e2(u.c)+u.i.map(e2).join('')}).join('-')}
+function enc(){const ks=CH.filter(c=>COL.has(c.key)).map(c=>e2(c.i)).join('');return 'b-'+Object.keys(B).map(x=>{const u=B[x];return A[+x]+u.s+e2(u.c)+u.i.map(e2).join('')}).join('-')+(ks?'~'+ks:'')}
 function dec(s){
   s=(s||'').trim().replace(/^.*#/,'');
   if(!s.startsWith('b-'))return null;
-  const b={};
+  const b={};let cp=null;
+  [s,cp]=s.split('~');dec.col=null;
+  if(cp!=null){const ks=[];for(let q=0;q+1<cp.length;q+=2){const c=CH[d2(cp.slice(q,q+2))];if(c)ks.push(c.key)}dec.col=ks}
   for(const p of s.slice(2).split('-')){
     if(!p)continue;
     if(p.length<4)return null;
@@ -217,7 +225,7 @@ function dec(s){
 function openShare(){const c=enc();$('code').value=c;$('paste').value='';try{history.replaceState(null,'','#'+c)}catch(e){}$('modal').classList.add('on')}
 function closeShare(){$('modal').classList.remove('on')}
 function copyCode(){const c=$('code').value;const fb=()=>{const t=$('code');t.focus();t.select();toast('선택됐어요. 길게 눌러 복사하세요')};try{navigator.clipboard.writeText(c).then(()=>toast('복사했어요'),fb)}catch(e){fb()}}
-function loadCode(){const b=dec($('paste').value);if(!b)return toast('올바른 코드가 아니에요');sel=null;armed=null;held=null;commit(()=>{B=b});closeShare();toast('불러왔어요')}
+function loadCode(){const b=dec($('paste').value);if(!b)return toast('올바른 코드가 아니에요');if(dec.col)setCollab(dec.col);sel=null;armed=null;held=null;commit(()=>{B=b});closeShare();toast('불러왔어요')}
 
 let rt;function resetB(){const r=$('reset');if(r.classList.contains('warn')){clearTimeout(rt);r.classList.remove('warn');r.textContent='초기화';sel=null;armed=null;held=null;commit(()=>{B={}});toast('초기화했어요');return}r.classList.add('warn');r.textContent='확인';rt=setTimeout(()=>{r.classList.remove('warn');r.textContent='초기화'},2500)}
 
@@ -225,7 +233,8 @@ function render(){renderBoard();renderTraits();renderBar();renderBody()}
 
 (function init(){
   let b=null;
-  try{b=dec(location.hash)}catch(e){}
+  try{setCollab(JSON.parse(localStorage.getItem('tftb19col')||'[]'))}catch(e){setCollab([])}
+  try{b=dec(location.hash);if(b&&dec.col)setCollab(dec.col)}catch(e){}
   if(!b){try{b=dec(localStorage.getItem('tftb19v2'))}catch(e){}}
   if(b)B=b;
   renderFlt();render();

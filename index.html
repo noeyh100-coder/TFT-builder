@@ -9,7 +9,7 @@
 <div id="traits"></div>
 <div id="boardWrap"><div id="board"></div></div>
 <div id="bar"></div>
-<div id="drawer"><div id="trashMsg">여기에 놓으면 제거</div><div class="dh"><button class="tab on" data-t="c" onclick="setTab('c')">챔피언</button><button class="tab" data-t="a" onclick="setTab('a')">AI 공책롤체</button><button class="ib" onclick="toggleFull()">⤢</button></div><div id="flt" class="flt"></div><div id="flt2" class="flt"></div><div id="body" class="body"></div></div>
+<div id="drawer"><div id="trashMsg">여기에 놓으면 제거</div><div class="dh"><button class="tab on" data-t="c" onclick="setTab('c')">챔피언</button><button class="tab" data-t="a" onclick="setTab('a')">AI 공책롤체</button><button class="tab" data-t="k" onclick="setTab('k')">콜라보</button><button class="ib" onclick="toggleFull()">⤢</button></div><div id="flt" class="flt"></div><div id="flt2" class="flt"></div><div id="body" class="body"></div></div>
 <div id="modal" class="ov" onclick="if(event.target===this)closeShare()"><div class="box"><div class="ttl">덱 공유 코드</div><textarea id="code" readonly></textarea><div class="r"><button class="ib" onclick="copyCode()">코드 복사</button></div><div class="ttl" style="margin-top:14px">코드로 불러오기</div><textarea id="paste" placeholder="공유 코드를 붙여넣으세요"></textarea><div class="r"><button class="ib" onclick="loadCode()">불러오기</button><button class="ib" onclick="closeShare()">닫기</button></div></div></div>
 <div id="sheet" class="ov" onclick="if(event.target===this)closeSheet()"><div class="box"><div id="sheetBody"></div><div class="r"><button class="ib" onclick="closeSheet()">닫기</button></div></div></div>
 <div id="ghost"></div>
@@ -17,4 +17,5 @@
 <script src="data/data.js"></script>
 <script src="app.js"></script>
 <script src="ai.js"></script>
+<script src="collab.js"></script>
 </body></html>
